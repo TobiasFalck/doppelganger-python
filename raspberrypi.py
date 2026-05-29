@@ -335,6 +335,21 @@ def send_measurement(
                     close_backend_connection()
 
 
+    # -----------------------------
+    # Session configuration
+# -----------------------------
+# Session configuration
+# -----------------------------
+# Duration in seconds to collect measurements before stopping (5-10s recommended)
+SESSION_DURATION_SECONDS = 8
+
+# Collected measurement lists for averaging
+session_started = False
+session_start_time = None
+measured_bpms = []
+measured_spo2s = []
+
+
 # -----------------------------
 # Start Heartbeat Buzzer
 # -----------------------------
@@ -505,6 +520,40 @@ try:
                 raw_red=current_red,
                 signal_quality=signal_quality,
             )
+
+            # Session start and aggregation
+            if not session_started:
+                session_started = True
+                session_start_time = current_time
+
+            if bpm > 0:
+                measured_bpms.append(bpm)
+            if spo2 > 0:
+                measured_spo2s.append(spo2)
+
+            # If session duration elapsed, compute averages, display and shut down
+            if session_started and (current_time - session_start_time) >= SESSION_DURATION_SECONDS:
+                avg_bpm = int(sum(measured_bpms) / len(measured_bpms)) if measured_bpms else 0
+                avg_spo2 = int(sum(measured_spo2s) / len(measured_spo2s)) if measured_spo2s else 0
+
+                # Show averages on LCD
+                mylcd.lcd_clear()
+                mylcd.lcd_display_string(f"AVG BPM {avg_bpm:3d}", 1)
+                mylcd.lcd_display_string(f"AVG SAT {avg_spo2:3d}%", 2)
+
+                print(f"Session complete. Avg BPM: {avg_bpm}, Avg SpO2: {avg_spo2}")
+
+                # Keep the results visible briefly then shut down
+                time.sleep(5)
+
+                heartbeat_active = False
+                buzzer.stop()
+                close_backend_connection()
+                mylcd.lcd_clear()
+                GPIO.cleanup()
+
+                print("Session ended, shutting down.")
+                sys.exit(0)
 
             last_print_time = (
                 current_time
